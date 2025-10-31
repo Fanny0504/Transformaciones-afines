@@ -1,0 +1,95 @@
+# Transformaciones de Inclinación y Perspectiva sin OpenCV
+# Uso de NumPy + Pillow + Matplotlib
+
+from PIL import Image
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Cargar imagen con Pillow
+ruta = r"C:\Users\brand\Desktop\imagenes practica\burro ipn.jpg"
+img = Image.open(ruta).convert("RGB")
+img_np = np.array(img)
+rows, cols, _ = img_np.shape
+
+#  Transformación de Inclinación (Shear)
+
+kx, ky = 0.3, 0.0  # inclinación horizontal
+M_shear = np.array([[1, kx, 0],
+                    [ky, 1, 0],
+                    [0,  0, 1]])
+
+# Nueva anchura según la inclinación
+new_cols = int(cols + abs(kx * rows))
+sheared_img = np.zeros((rows, new_cols, 3), dtype=np.uint8)
+
+# Transformación (mapa inverso)
+for y in range(rows):
+    for x in range(cols):
+        new_x = int(x + kx * y)
+        new_y = int(y + ky * x)
+        if 0 <= new_x < new_cols and 0 <= new_y < rows:
+            sheared_img[new_y, new_x] = img_np[y, x]
+
+
+#  Transformación de Perspectiva
+
+# Puntos fuente y destino
+pts1 = np.float32([[0, 0],
+                   [cols - 1, 0],
+                   [0, rows - 1],
+                   [cols - 1, rows - 1]])
+
+pts2 = np.float32([[100, 50],
+                   [cols - 100, 0],
+                   [50, rows - 50],
+                   [cols - 50, rows]])
+
+# Calcular matriz de perspectiva
+def get_perspective_matrix(src, dst):
+    """Calcula la matriz de transformación proyectiva 3x3"""
+    A = []
+    for i in range(4):
+        x, y = src[i][0], src[i][1]
+        u, v = dst[i][0], dst[i][1]
+        A.append([x, y, 1, 0, 0, 0, -u*x, -u*y])
+        A.append([0, 0, 0, x, y, 1, -v*x, -v*y])
+    A = np.array(A)
+    B = dst.flatten()
+    h = np.linalg.lstsq(A, B, rcond=None)[0]
+    return np.append(h, 1).reshape(3, 3)
+
+M_persp = get_perspective_matrix(pts1, pts2)
+
+# Aplicar la transformación de perspectiva
+perspective_img = np.zeros_like(img_np)
+inv_M = np.linalg.inv(M_persp)
+
+for y in range(rows):
+    for x in range(cols):
+        src_coord = inv_M @ np.array([x, y, 1])
+        src_coord /= src_coord[2]
+        sx, sy = int(src_coord[0]), int(src_coord[1])
+        if 0 <= sx < cols and 0 <= sy < rows:
+            perspective_img[y, x] = img_np[sy, sx]
+
+# Resultados
+
+plt.figure(figsize=(12, 6))
+
+plt.subplot(1, 3, 1)
+plt.imshow(img_np)
+plt.title("Imagen Original")
+plt.axis('off')
+
+plt.subplot(1, 3, 2)
+plt.imshow(sheared_img)
+plt.title("Transformación de Inclinación (Shear)")
+plt.axis('off')
+
+plt.subplot(1, 3, 3)
+plt.imshow(perspective_img)
+plt.title("Transformación de Perspectiva")
+plt.axis('off')
+
+plt.tight_layout()
+plt.show()
